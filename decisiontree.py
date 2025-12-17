@@ -69,7 +69,6 @@ dt_tuned = DecisionTreeClassifier(
     max_depth=best_depth,
     min_samples_split=50,
     min_samples_leaf=5,
-    criterion='entropy',
     max_features=0.9
 )
 dt_tuned.fit(X_train_enc, y_train)
