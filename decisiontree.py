@@ -22,18 +22,36 @@ X_train, X_test, y_train, y_test = train_test_split(
     stratify=y
 )
 
-dt_model = DecisionTreeClassifier(random_state=42)
+dt_untuned = DecisionTreeClassifier(random_state=42)
+dt_untuned.fit(X_train, y_train)
+y_pred_untuned = dt_untuned.predict(X_test)
+
+print("Untuned Decision Tree")
+print(f"Accuracy:  {accuracy_score(y_test, y_pred_untuned):.4f}")
+print(f"Precision: {precision_score(y_test, y_pred_untuned, pos_label='yes'):.4f}")
+print(f"Recall:    {recall_score(y_test, y_pred_untuned, pos_label='yes'):.4f}")
+print(f"F1-score:  {f1_score(y_test, y_pred_untuned, pos_label='yes'):.4f}")
+print("\nConfusion Matrix:")
+print(confusion_matrix(y_test, y_pred_untuned))
+print("\nClassification Report:")
+print(classification_report(y_test, y_pred_untuned))
+
+dt_model = DecisionTreeClassifier(
+    random_state=42,
+    max_depth=9,            
+    min_samples_split=59,    
+    min_samples_leaf=6,
+    criterion='entropy'
+)
 dt_model.fit(X_train, y_train)
 y_pred = dt_model.predict(X_test)
 
-print("Performance")
+print("Tuned Decision Tree")
 print(f"Accuracy:  {accuracy_score(y_test, y_pred):.4f}")
 print(f"Precision: {precision_score(y_test, y_pred, pos_label='yes'):.4f}")
 print(f"Recall:    {recall_score(y_test, y_pred, pos_label='yes'):.4f}")
 print(f"F1-score:  {f1_score(y_test, y_pred, pos_label='yes'):.4f}")
-
 print("\nConfusion Matrix:")
 print(confusion_matrix(y_test, y_pred))
-
 print("\nClassification Report:")
 print(classification_report(y_test, y_pred))
