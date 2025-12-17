@@ -41,7 +41,8 @@ dt_model = DecisionTreeClassifier(
     max_depth=9,            
     min_samples_split=59,    
     min_samples_leaf=6,
-    criterion='entropy'
+    criterion='entropy',
+    max_features=0.9
 )
 dt_model.fit(X_train, y_train)
 y_pred = dt_model.predict(X_test)
