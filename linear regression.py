@@ -22,9 +22,9 @@ X_train, X_test, y_train, y_test = train_test_split(
     random_state=42,
     stratify=y
 )
-lrModel = LinearRegression()
-lrModel.fit(X_train, y_train)
-y_pred_continuous = lrModel.predict(X_test)
+lr_model = LinearRegression()
+lr_model.fit(X_train, y_train)
+y_pred_continuous = lr_model.predict(X_test)
 y_pred = (y_pred_continuous >= 0.5).astype(int)
 
 print("Performance")
@@ -32,9 +32,7 @@ print(f"Accuracy:  {accuracy_score(y_test, y_pred):.4f}")
 print(f"Precision: {precision_score(y_test, y_pred):.4f}")
 print(f"Recall:    {recall_score(y_test, y_pred):.4f}")
 print(f"F1-score:  {f1_score(y_test, y_pred):.4f}")
-
 print("\nConfusion Matrix:")
 print(confusion_matrix(y_test, y_pred))
-
 print("\nClassification Report:")
 print(classification_report(y_test, y_pred, target_names=['no', 'yes']))
