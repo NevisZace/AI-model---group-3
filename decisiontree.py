@@ -1,33 +1,41 @@
 import pandas as pd
 import numpy as np
 import matplotlib.pyplot as plt
-from sklearn.model_selection import train_test_split, cross_val_score
+from sklearn.model_selection import train_test_split, GridSearchCV
 from sklearn.preprocessing import OneHotEncoder
 from sklearn.compose import ColumnTransformer
+from sklearn.pipeline import Pipeline
 from sklearn.tree import DecisionTreeClassifier
-from sklearn.metrics import accuracy_score, precision_score, recall_score, f1_score, confusion_matrix, classification_report, make_scorer
+from sklearn.metrics import (
+    accuracy_score, precision_score, recall_score,
+    f1_score, confusion_matrix, classification_report, make_scorer
+)
 
 BankData = pd.read_csv("bank.csv")
 X = BankData.drop('deposit', axis=1)
 y = BankData['deposit']
+
+#Train/test split
 X_train, X_test, y_train, y_test = train_test_split(
     X, y,
     test_size=0.2,
     random_state=42,
     stratify=y
 )
-category = X.select_dtypes(include='object').columns.tolist()
+category= X.select_dtypes(include='object').columns.tolist()
 preprocessor = ColumnTransformer(
     transformers=[
         ('cat', OneHotEncoder(handle_unknown='ignore'), category)
     ],
     remainder='passthrough'
 )
-X_train_enc = preprocessor.fit_transform(X_train)
-X_test_enc  = preprocessor.transform(X_test)
-dt_untuned = DecisionTreeClassifier(random_state=42)
-dt_untuned.fit(X_train_enc, y_train)
-y_pred_untuned = dt_untuned.predict(X_test_enc)
+
+untuned_pipeline = Pipeline([
+    ('preprocess', preprocessor),
+    ('dt', DecisionTreeClassifier(random_state=42))
+])
+untuned_pipeline.fit(X_train, y_train)
+y_pred_untuned = untuned_pipeline.predict(X_test)
 
 print("Untuned Decision Tree")
 print(f"Accuracy:  {accuracy_score(y_test, y_pred_untuned):.4f}")
@@ -39,40 +47,65 @@ print(confusion_matrix(y_test, y_pred_untuned))
 print("\nClassification Report:")
 print(classification_report(y_test, y_pred_untuned))
 
+#overfit/underfit graph
 max_depths = range(1, 21)
-train_f1_scores = []
-cv_f1_scores = []
+train_f1 = []
+cv_f1 = []
 f1_scorer = make_scorer(f1_score, pos_label='yes')
 
 for depth in max_depths:
-    dt = DecisionTreeClassifier(random_state=42, max_depth=depth)
-    dt.fit(X_train_enc, y_train)
-    train_f1_scores.append(f1_score(y_train, dt.predict(X_train_enc), pos_label='yes'))
-    cv_score = np.mean(cross_val_score(dt, X_train_enc, y_train, cv=5, scoring=f1_scorer))
-    cv_f1_scores.append(cv_score)
+    pipeline = Pipeline([
+        ('preprocess', preprocessor),
+        ('dt', DecisionTreeClassifier(random_state=42, max_depth=depth))
+    ])
+    pipeline.fit(X_train, y_train)
+    train_pred = pipeline.predict(X_train)
+    train_f1.append(f1_score(y_train, train_pred, pos_label='yes'))
+    cv_scores = GridSearchCV(
+        pipeline,
+        param_grid={},
+        scoring=f1_scorer,
+        cv=5
+    ).fit(X_train, y_train).best_score_
+    cv_f1.append(cv_scores)
 
-#Overfit/underfit
-plt.figure(figsize=(8,5))
-plt.plot(max_depths, train_f1_scores, label='Training F1', marker='o')
-plt.plot(max_depths, cv_f1_scores, label='CV F1', marker='o')
+best_depth = max_depths[np.argmax(cv_f1)]
+print(f"\nBest max_depth from CV: {best_depth}")
+plt.figure(figsize=(8, 5))
+plt.plot(max_depths, train_f1, marker='o', label='Training F1')
+plt.plot(max_depths, cv_f1, marker='o', label='CV F1')
 plt.xlabel('max_depth')
 plt.ylabel('F1-score')
 plt.title('Decision Tree Overfit vs Underfit')
 plt.legend()
 plt.grid(True)
 plt.show()
-best_depth = max_depths[np.argmax(cv_f1_scores)]
-print(f"Best max_depth from CV: {best_depth}")
 
-dt_tuned = DecisionTreeClassifier(
-    random_state=42,
-    max_depth=best_depth,
-    min_samples_split=50,
-    min_samples_leaf=5,
-    max_features=0.9
+pipeline = Pipeline([
+    ('preprocess', preprocessor),
+    ('dt', DecisionTreeClassifier(random_state=42))
+])
+
+param_grid = {
+    'dt__max_depth': [1, 3, 5, 7, 9, 11, 13, None],
+    'dt__min_samples_leaf': [1, 2, 5, 10, 20, 30, 40, 50],
+    'dt__min_samples_split': [2, 5, 10, 20, 30, 40, 50, 60, 70 ,80 ,90, 100],
+    'dt__criterion': ['gini', 'entropy', 'log_loss']
+}
+
+grid = GridSearchCV(
+    pipeline,
+    param_grid=param_grid,
+    scoring=f1_scorer,
+    cv=5,
+    n_jobs=-1
 )
-dt_tuned.fit(X_train_enc, y_train)
-y_pred_tuned = dt_tuned.predict(X_test_enc)
+
+grid.fit(X_train, y_train)
+print("\nBest parameters from GridSearchCV:")
+print(grid.best_params_)
+best_model = grid.best_estimator_
+y_pred_tuned = best_model.predict(X_test)
 
 print("\nTuned Decision Tree")
 print(f"Accuracy:  {accuracy_score(y_test, y_pred_tuned):.4f}")
