@@ -16,7 +16,7 @@ BankData = pd.read_csv("bank.csv")
 X = BankData.drop('deposit', axis=1)
 y = BankData['deposit']
 
-#Train/Test split
+#Train/test split
 X_train, X_test, y_train, y_test = train_test_split(
     X, y,
     test_size=0.2,
@@ -32,25 +32,24 @@ preprocessor = ColumnTransformer(
     ],
     remainder='passthrough'
 )
-
 f1_scorer = make_scorer(f1_score, pos_label='yes')
-#Untuned Decision Tree
+
+#Untuned decision tree 
 untuned_pipeline = Pipeline([
     ('preprocess', preprocessor),
     ('dt', DecisionTreeClassifier(random_state=42))
 ])
-untuned_pipeline.fit(X_train, y_train)
-y_pred_untuned = untuned_pipeline.predict(X_test)
 
-print("Untuned Decision Tree")
-print(f"Accuracy:  {accuracy_score(y_test, y_pred_untuned):.4f}")
-print(f"Precision: {precision_score(y_test, y_pred_untuned, pos_label='yes'):.4f}")
-print(f"Recall:    {recall_score(y_test, y_pred_untuned, pos_label='yes'):.4f}")
-print(f"F1-score:  {f1_score(y_test, y_pred_untuned, pos_label='yes'):.4f}")
-print("\nConfusion Matrix:")
-print(confusion_matrix(y_test, y_pred_untuned))
-print("\nClassification Report:")
-print(classification_report(y_test, y_pred_untuned))
+cv_scores_untuned = cross_val_score(
+    untuned_pipeline,
+    X_train,
+    y_train,
+    cv=5,
+    scoring=f1_scorer
+)
+
+print("Untuned Decision Tree (5-fold CV on training data)")
+print(f"Mean CV F1: {cv_scores_untuned.mean():.4f} ± {cv_scores_untuned.std():.4f}")
 
 #Overfitting vs underfitting
 max_depths = range(1, 21)
@@ -65,11 +64,11 @@ for depth in max_depths:
             max_depth=depth
         ))
     ])
+
     #Train F1
     pipeline.fit(X_train, y_train)
     train_pred = pipeline.predict(X_train)
     train_f1.append(f1_score(y_train, train_pred, pos_label='yes'))
-    
     scores = cross_val_score(
         pipeline,
         X_train,
@@ -81,7 +80,7 @@ for depth in max_depths:
 best_depth = max_depths[np.argmax(cv_f1)]
 print(f"\nBest max_depth from CV: {best_depth}")
 
-#Plotting graph
+#Plot graph
 plt.figure(figsize=(8, 5))
 plt.plot(max_depths, train_f1, marker='o', label='Training F1')
 plt.plot(max_depths, cv_f1, marker='o', label='CV F1')
@@ -92,17 +91,19 @@ plt.legend()
 plt.grid(True)
 plt.show()
 
-#Hyperparameter tuning with GridSearchCV
+# Hyperparameter tuning with GridSearchCV
 pipeline = Pipeline([
     ('preprocess', preprocessor),
     ('dt', DecisionTreeClassifier(random_state=42))
 ])
+
 param_grid = {
     'dt__max_depth': [1, 3, 5, 7, 9, 11, 13, 15, None],
     'dt__min_samples_leaf': [1, 2, 5, 10, 20],
     'dt__min_samples_split': [2, 5, 10, 20, 40, 60, 80, 100],
     'dt__criterion': ['gini', 'entropy', 'log_loss']
 }
+
 grid = GridSearchCV(
     pipeline,
     param_grid=param_grid,
@@ -114,11 +115,10 @@ grid.fit(X_train, y_train)
 print("\nBest parameters from GridSearchCV:")
 print(grid.best_params_)
 
-#Tuned Decision Tree
+#Tuned decision tree
 best_model = grid.best_estimator_
 y_pred_tuned = best_model.predict(X_test)
-
-print("\nTuned Decision Tree")
+print("\nTuned Decision Tree (Test Set Evaluation)")
 print(f"Accuracy:  {accuracy_score(y_test, y_pred_tuned):.4f}")
 print(f"Precision: {precision_score(y_test, y_pred_tuned, pos_label='yes'):.4f}")
 print(f"Recall:    {recall_score(y_test, y_pred_tuned, pos_label='yes'):.4f}")
