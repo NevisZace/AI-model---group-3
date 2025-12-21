@@ -1,39 +1,121 @@
+#replaces earlier draft with tuned Random Forest:
+#one-hot encoding 
+#5-fold CV tuning over n_estimators
+#F1-score selection
+#final evaluation on a 20% holdout test set
+
 import pandas as pd
-from sklearn.model_selection import train_test_split
-from sklearn.preprocessing import LabelEncoder
-from sklearn.ensemble import RandomForestClassifier
-from sklearn.metrics import accuracy_score, classification_report, confusion_matrix
-import seaborn as sns
+import numpy as np
 import matplotlib.pyplot as plt
-
-# Load dataset (ensure bank.csv is in the repository)
-BankData = pd.read_csv("bank.csv")
-X = BankData.drop('deposit', axis=1)
-y = BankData['deposit']
-
-# Encode categorical variables as per group style
-category = X.select_dtypes(include='object').columns
-label = LabelEncoder()
-for col in category:
-    X[col] = label.fit_transform(X[col])
-y = y.map({'no': 0, 'yes': 1})
-
-# Standard 80/20 train/test split
-X_train, X_test, y_train, y_test = train_test_split(
-    X, y, test_size=0.2, random_state=42, stratify=y
+from sklearn.model_selection import train_test_split, cross_validate
+from sklearn.preprocessing import OneHotEncoder
+from sklearn.compose import ColumnTransformer
+from sklearn.pipeline import Pipeline
+from sklearn.ensemble import RandomForestClassifier
+from sklearn.metrics import (
+    accuracy_score, precision_score, recall_score,
+    f1_score, confusion_matrix, make_scorer
 )
 
-# Random Forest Model (Your specific contribution)
-rf_model = RandomForestClassifier(n_estimators=100, max_depth=12, random_state=42)
-rf_model.fit(X_train, y_train)
+#load dataset
+BankData = pd.read_csv("bank.csv")
+X = BankData.drop("deposit", axis=1)
+y = BankData["deposit"]
 
-# Output results for the report
-y_pred = rf_model.predict(X_test)
-print(f"Random Forest Accuracy: {accuracy_score(y_test, y_pred):.4f}")
-print(classification_report(y_test, y_pred))
+#holdout test
+X_train, X_test, y_train, y_test = train_test_split(
+    X, y, test_size=0.20, random_state=42, stratify=y
+)
 
-# Confusion Matrix (Required for the 8-page report visuals)
-plt.figure(figsize=(6,4))
-sns.heatmap(confusion_matrix(y_test, y_pred), annot=True, fmt='d', cmap='Greens')
-plt.title('Random Forest Confusion Matrix')
+#preprocess: one-hot encoding
+categorical_cols = X.select_dtypes(include="object").columns.tolist()
+preprocessor = ColumnTransformer(
+    transformers=[
+        ("cat", OneHotEncoder(handle_unknown="ignore"), categorical_cols)
+    ],
+    remainder="passthrough"
+)
+
+f1_scorer = make_scorer(f1_score, pos_label="yes")
+
+#try different trees
+nums = []
+cv_f1 = []
+train_f1 = []
+for n in range(10, 201, 5):
+    pipeline = Pipeline([
+        ("preprocess", preprocessor),
+        ("rf", RandomForestClassifier(
+            n_estimators=n,
+            criterion="entropy",
+            random_state=42,
+            n_jobs=-1
+        ))
+    ])
+    
+    #cross validation on training data
+
+    scores = cross_validate(
+        pipeline,
+        X_train,
+        y_train,
+        cv=5,
+        scoring=f1_scorer,
+        return_train_score=True
+    )
+
+    nums.append(n)
+    cv_f1.append(scores["test_score"].mean())
+    train_f1.append(scores["train_score"].mean())
+
+best_index = int(np.argmax(cv_f1))
+best_n = nums[best_index]
+print("Best n_estimators from 5-fold CV (on training set):", best_n)
+print("Best mean CV F1:", cv_f1[best_index])
+
+#plot training vs CV F1
+plt.figure()
+plt.plot(nums, train_f1, label="Mean Training F1 (CV)")
+plt.plot(nums, cv_f1, label="Mean CV F1 (5-fold)")
+plt.xlabel("Number of Trees (n_estimators)")
+plt.ylabel("F1-score")
+plt.title("Random Forest: Training vs 5-fold CV F1-score")
+plt.grid(True)
+plt.legend()
+plt.show()
+
+final_model = Pipeline([
+    ("preprocess", preprocessor),
+    ("rf", RandomForestClassifier(
+        n_estimators=best_n,
+        criterion="entropy",
+        random_state=42,
+        n_jobs=-1
+    ))
+])
+
+final_model.fit(X_train, y_train)
+y_pred_test = final_model.predict(X_test)
+
+print("\nRandom Forest (tuned with 5-fold CV, tested once on holdout)")
+print("Chosen n_estimators:", best_n)
+print("Holdout Test Accuracy:", accuracy_score(y_test, y_pred_test) * 100, "%")
+print("\nEvaluation Metrics (Holdout Test Set)")
+print("Precision:", precision_score(y_test, y_pred_test, pos_label="yes", zero_division=0))
+print("Recall:", recall_score(y_test, y_pred_test, pos_label="yes", zero_division=0))
+print("F1-score:", f1_score(y_test, y_pred_test, pos_label="yes", zero_division=0))
+
+#confusion matrix
+cm = confusion_matrix(y_test, y_pred_test, labels=["no", "yes"])
+print("\nConfusion Matrix (labels: no, yes):")
+print(cm)
+plt.figure()
+plt.imshow(cm, interpolation="nearest", cmap=plt.cm.Blues)
+plt.title("Random Forest Confusion Matrix")
+plt.colorbar(fraction=0.05)
+plt.xticks([0, 1], ["no", "yes"], rotation=45)
+plt.yticks([0, 1], ["no", "yes"])
+plt.ylabel("True label")
+plt.xlabel("Predicted label")
+plt.tight_layout()
 plt.show()
